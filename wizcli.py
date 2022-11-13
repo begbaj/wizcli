@@ -33,12 +33,12 @@ async def gen_color(seed, mode="standard"):
         case _:
             return __gen_color_standard(seed)
 
-def __onset_specdiff(ws, hs):
-    onset_specdiff = onset('specdiff', ws, hs)
+def __onset_specdiff(ws, hs, src_func):
+    onsetfunc = onset('specdiff', ws, hs)
     onset_times = []
     while True: # read frames
        samples, num_frames_read = src_func()
-       if onset_specdiff(samples):
+       if onsetfunc(samples):
            onset_time = onset_specdiff.get_last_s()
            if onset_time < duration:
                case = int(onset_time*1000%3)
@@ -51,10 +51,17 @@ def __onset_specdiff(ws, hs):
     return onset_times
 
 
-async def onset_detection(mode):
+async def onset_detection(file_path, mode, ws=1024, hs=0, sr=0):
+    if hs == 0:
+        hop_size = window_size // 1
+
+    src_func = source(file_path, sr, hs)
+    sample_rate = src_func.samplerate
+    duration = float(src_func.duration) / src_func.samplerate
+
     match mode:
         case "specdiff":
-            pass
+            __onset_specdiff(ws, hs)
         case pattern_2:
             pass
 
@@ -69,13 +76,6 @@ async def main():
     mixer.init()
     mixer.music.load(file_path)
 
-    window_size = 1024 # FFT size
-    hop_size = window_size // 1
-    sample_rate = 0
-
-    src_func = source(file_path, sample_rate, hop_size)
-    sample_rate = src_func.samplerate
-    duration = float(src_func.duration) / src_func.samplerate
 
 
     bulbips = ["192.168.1.14", "192.168.1.2"]
