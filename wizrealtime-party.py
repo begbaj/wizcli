@@ -13,10 +13,15 @@ BULBS = []
 SAMPLES = []
 VOLUMES = []
 
+RECORDING = [SAMPLES, VOLUMES]
+
 
 def gen_color(volume, max=100):
+    threshold = (80/100)*max
 
-    br = 100 + int((int(volume)*155)/int(max))
+    br = 100 + int((int(volume)*155)/int(threshold))
+    if br > 255:
+        br = 255
     case = int(random()*3)
     if case == 0:
         r= 255
@@ -62,6 +67,7 @@ async def light_controller(audio_input):
     bulb_lock_for   = 0.3 # 0.3 -> 200 bpm
     refresh_rate    = 0.001
     min_br          = 50
+    syncronized     = True
     
     # variables
 
@@ -100,10 +106,9 @@ async def light_controller(audio_input):
             system("clear")
             print("Tareting")
             continue
-
-        if len(SAMPLES) > _max_sample_count:
-            SAMPLES.pop(0)
-            VOLUMES.pop(0)
+        for recorder in RECORDING:
+            if len(recorder) > _max_sample_count:
+                recorder.pop(0)
 
         _max_volume = np.max(VOLUMES)
         _average_volume = np.average(VOLUMES)
@@ -122,22 +127,38 @@ async def light_controller(audio_input):
         beat = beat_detection(data, VOLUMES[-1], _average_volume, _max_volume)
 
         if beat is not None:
-            on_bulb = beat["bulb"]
+            if syncronized:
+                for on_bulb in BULBS:
+                    # set bulb to new beat values
+                    if on_bulb["lock_for"] < time.time() - on_bulb["last_lock"]:
+                        on_bulb["lock"]         = False
 
-            # set bulb to new beat values
-            if on_bulb["lock_for"] < time.time() - on_bulb["last_lock"]:
-                on_bulb["lock"]         = False
+                    if not on_bulb["lock"]:
+                        on_bulb["br"]           = beat["color"][3]
+                        on_bulb["r"]            = beat["color"][0]
+                        on_bulb["g"]            = beat["color"][1]
+                        on_bulb["b"]            = beat["color"][2]
+                        on_bulb["last_lock"]    = time.time()
+                        on_bulb["lock"]         = True
 
-            if not on_bulb["lock"]:
-                on_bulb["br"]           = beat["color"][3]
-                on_bulb["r"]            = beat["color"][0]
-                on_bulb["g"]            = beat["color"][1]
-                on_bulb["b"]            = beat["color"][2]
-                on_bulb["last_lock"]    = time.time()
-                on_bulb["lock"]         = True
+            else:
+                on_bulb = beat["bulb"]
+
+                # set bulb to new beat values
+                if on_bulb["lock_for"] < time.time() - on_bulb["last_lock"]:
+                    on_bulb["lock"]         = False
+
+                if not on_bulb["lock"]:
+                    on_bulb["br"]           = beat["color"][3]
+                    on_bulb["r"]            = beat["color"][0]
+                    on_bulb["g"]            = beat["color"][1]
+                    on_bulb["b"]            = beat["color"][2]
+                    on_bulb["last_lock"]    = time.time()
+                    on_bulb["lock"]         = True
 
         for bulb in BULBS:
             if bulb["br"] > min_br:
+                bulb["is_on"] = True
                 bulb["br"] -= (256-bulb["br"])
                 await bulb["light"].turn_on(PilotBuilder(
                     speed       = 200,
@@ -145,8 +166,10 @@ async def light_controller(audio_input):
                     brightness  = bulb["br"]
                 ))
             else:
-                bulb["lock"] = False
-                await bulb["light"].turn_off()
+                if bulb["is_on"]:
+                    bulb["lock"] = False
+                    bulb["is_on"] = False
+                    await bulb["light"].turn_off()
 
         time.sleep(refresh_rate)
 
@@ -170,7 +193,8 @@ def main():
             "r": 255, "g": 255, "b": 255, 
             "lock_for": 0,
             "last_lock": 0,
-            "lock": False
+            "lock": False,
+            "is_on": False
         })
     
     # microphone socket init
