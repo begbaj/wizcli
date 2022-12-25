@@ -1,22 +1,23 @@
-import asyncio
-import time
-from sys import argv
-from aubio import source, onset, tempo, pitch
-from numpy import median, diff
-import numpy as np
 from os import system
-from random import random
-import threading
 from pywizlight import wizlight, PilotBuilder, discovery
-import pyaudio
+from random import random
+import asyncio
+import aubio
 import audioop
 import math
+import numpy as np
+import pyaudio
+import time
 
-def gen_color(case, volume=-1, max=100, min=0):
-    if volume == -1:
-        br = 255
-    else:
-        br = 100 + int((int(volume)*155)/int(max))
+BULBS = []
+SAMPLES = []
+VOLUMES = []
+
+
+def gen_color(volume, max=100):
+
+    br = 100 + int((int(volume)*155)/int(max))
+    case = int(random()*3)
     if case == 0:
         r= 255
         g= random()*24
@@ -31,25 +32,19 @@ def gen_color(case, volume=-1, max=100, min=0):
         b= 255
     return (r,g,b, br)
 
-def onset_detection(stream_data, samplerate, volume, threshold=70, max=100):
-    global bulbs
-    onset_method = 'specflux'
-    buf_size = 2048
-    hop_size = buf_size // 2
-
-    onsetfunc = onset(onset_method, buf_size, hop_size, samplerate)
-
-    samples = np.fromstring(stream_data, dtype=np.int16)
-    samples = samples.reshape((-1,))
-    samples = samples.astype(np.float32)
-
-    if volume > threshold and onsetfunc(samples):
-        onset_time = onsetfunc.get_last_s()
+def beat_detection(data, volume, threshold=50, max=100):
+    if volume > threshold:
         case = int(random()*3)
-        color = gen_color(case, volume, max)
-        return [onset_time, case, int(random()*len(bulbs)), color ]
+        color = gen_color(volume, max)
+        bulb_index = int(random()*len(BULBS))
+
+        return{
+                "case" : case ,
+                "bulb" : BULBS[bulb_index],
+                "color": color
+        }
     else:
-        return [None, 0, int(random()*len(bulbs)), (0,0,0,0) ]
+        return None
 
 def get_volume(data):
     # Calculate the volume in dB
@@ -60,109 +55,135 @@ def get_volume(data):
     except:
         return 0
 
-async def main():
-    # init bulbs
-    global bulbs
-    # with open("bulbs.txt") as f:
-    #    for bulb in f.readlines():
-    #        print(bulb)
-    #        bulbs.append({"light": wizlight(bulb), "br": 255, "r":0, "g":0, "b":0})
-
-    p = pyaudio.PyAudio()
-
-    stream = p.open(format=pyaudio.paInt16,
-                    channels=1,
-                    rate=44100,
-                    input=True,
-                    frames_per_buffer=1024)
+async def light_controller(audio_input):
+    # configuration
+    # in seconds
+    record_for      = 5
+    bulb_lock_for   = 0.3 # 0.3 -> 200 bpm
+    refresh_rate    = 0.001
+    min_br          = 50
     
-    volumes = []
-    volumes_count = 0
-    max_volumes = 1000000
-    tarato = False
-    tarating = False
-    avarage_of_last_seconds = 15
-    start_tarating = 0
-    lock_for = 0.3 # max 200 bpm
-    refresh_rate = 0.001
+    # variables
 
-    bulbs.append({"light": wizlight("192.168.1.25"), "br": 255, "r":0, "g":0, "b":0, "lock_for": lock_for, "last_lock": time.time(), "state": 0})
-    # bulbs.append({"light": wizlight("192.168.1.29"), "br": 255, "r":0, "g":0, "b":0, "lock_for": lock_for, "last_lock": time.time(), "state": 0})
-    max = 0
-    average = 0
-    min = 0
+    # initially, it is set to 100000, it will
+    # be then set automatically depending on
+    # how many seconds of samples you want to0
+    # have record of
+    _max_sample_count       = 1000000
+    _tared                  = False
+    _tareting               = False
+    _tareting_started_at    = 0
+    _vols_count             = 0
+    _max_volume             = 0
+    _average_volume         = 0
+    _min_volume             = 0
 
-    while True:
-        stream_data = stream.read(1024)
-        volume = get_volume(stream_data)
+    stop = False
 
-             
-        if volume > 0:
-            volumes.append(int(volume))
-            volumes_count += 1
-            if not tarato:
-                if not tarating:
-                   start_tarating = time.time() 
-                tarating = True
-                if time.time() - start_tarating >= avarage_of_last_seconds:
-                    tarating = False
-                    tarato = True
-                    max_volumes = volumes_count
-        else:
-            tarato = False
-            volumes = []
-            volumes_count = 0
-        if volumes_count > max_volumes:
-            volumes.pop(0)
-            volumes_count -= 1
+    while not stop:
+        data = audio_input.read(1024)
 
-        # if len(volumes) > 10000:
-        #    volumes.pop(0)
-        if volumes_count > 0:
-            max = np.max(volumes)
-            average = np.average(volumes)
-            min = np.min(volumes)
-            if (max - min) < 3:
-                volume = 0
-        else:
-            average = 1
-            volume = 0
+        # while tareting, nothing will happen
+        if not _tared:
+            if not _tareting:
+                _tareting_started_at = time.time() 
+                _tareting = True
+            if time.time() - _tareting_started_at >= record_for:
+                _tareting = False
+                _tared = True
+                _max_sample_count = len(SAMPLES)
 
-        beat = onset_detection(stream_data, 44100, volume, average, max)
+        SAMPLES.append(data)
+        VOLUMES.append(get_volume(data))
+        
+        if _tareting:
+            system("clear")
+            print("Tareting")
+            continue
 
-        on_bulb = beat[2]
-        if bulbs[on_bulb]["lock_for"] < time.time() - bulbs[on_bulb]["last_lock"] and bulbs[on_bulb]["br"] <= 5 and bulbs[on_bulb]["state"] == 0:
-            bulbs[on_bulb]["br"] = beat[3][3]
-            bulbs[on_bulb]["r"] = beat[3][0]
-            bulbs[on_bulb]["g"] = beat[3][1]
-            bulbs[on_bulb]["b"] = beat[3][2]
-            bulbs[on_bulb]["last_lock"] = time.time()
+        if len(SAMPLES) > _max_sample_count:
+            SAMPLES.pop(0)
+            VOLUMES.pop(0)
+
+        _max_volume = np.max(VOLUMES)
+        _average_volume = np.average(VOLUMES)
+        _min_volume = np.min(VOLUMES)
 
         system("clear")
         print("=======================")
-        print(f"= Volume: {int(volume)}")
-        print(f"= Max: {int(max)}")
-        print(f"= Average: {int(average)}")
-        print(f"= Min: {int(min)}")
-        print(f"= Count: {volumes_count}")
-        print(f"= Tarato: {tarato}")
+        print(f"= Volume: {int(VOLUMES[-1])}")
+        print(f"= Max: {int(_max_volume)}")
+        print(f"= Average: {int(_average_volume)}")
+        print(f"= Min: {int(_min_volume)}")
+        print(f"= Count: {len(SAMPLES)}")
+        print(f"= Tarato: {_tared}")
         print("=======================")
 
-        for bulb in bulbs:
-            if bulb["br"] > 0:
+        beat = beat_detection(data, VOLUMES[-1], _average_volume, _max_volume)
+
+        if beat is not None:
+            on_bulb = beat["bulb"]
+
+            # set bulb to new beat values
+            if on_bulb["lock_for"] < time.time() - on_bulb["last_lock"]:
+                on_bulb["lock"]         = False
+
+            if not on_bulb["lock"]:
+                on_bulb["br"]           = beat["color"][3]
+                on_bulb["r"]            = beat["color"][0]
+                on_bulb["g"]            = beat["color"][1]
+                on_bulb["b"]            = beat["color"][2]
+                on_bulb["last_lock"]    = time.time()
+                on_bulb["lock"]         = True
+
+        for bulb in BULBS:
+            if bulb["br"] > min_br:
                 bulb["br"] -= (256-bulb["br"])
-                bulb["state"] = 1
                 await bulb["light"].turn_on(PilotBuilder(
-                    speed=200,
-                    rgb=(bulb["r"], bulb["g"], bulb["b"]),
-                    brightness=bulb["br"]
+                    speed       = 200,
+                    rgb         = (bulb["r"], bulb["g"], bulb["b"]),
+                    brightness  = bulb["br"]
                 ))
             else:
-                if bulb["state"]:
-                    bulb["state"] = 0
-                    await bulb["light"].turn_off()
+                bulb["lock"] = False
+                await bulb["light"].turn_off()
+
         time.sleep(refresh_rate)
 
-bulbs = []
-loop = asyncio.get_event_loop()
-loop.run_until_complete(main())
+
+def main():
+    # configuration
+    bulbips = [
+        "192.168.1.25",
+        "192.168.1.29",
+    ]
+
+    input_rate          = 44100
+    input_channels      = 1
+    input_frames        = 1024
+
+    # bulb init
+    for ip in bulbips:
+        BULBS.append({
+            "light": wizlight(ip),
+            "br": 255,
+            "r": 255, "g": 255, "b": 255, 
+            "lock_for": 0,
+            "last_lock": 0,
+            "lock": False
+        })
+    
+    # microphone socket init
+    audio_input = pyaudio.PyAudio().open(
+            format              = pyaudio.paInt16,
+            rate                = input_rate,
+            channels            = input_channels,
+            frames_per_buffer   = input_frames,
+            input               = True,
+    )
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(light_controller(audio_input))
+    
+if __name__ == "__main__":
+    main()
