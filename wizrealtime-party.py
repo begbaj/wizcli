@@ -4,7 +4,6 @@ from sys import argv
 from aubio import source, onset, tempo, pitch
 from numpy import median, diff
 import numpy as np
-from pygame import mixer
 from os import system
 from random import random
 import threading
@@ -56,7 +55,7 @@ def get_volume(data):
     # Calculate the volume in dB
     try:
         volume = audioop.rms(data, 2)
-        volume = 20 * math.log10(volume)
+        # volume = 20 * math.log10(volume)
         return volume
     except:
         return 0
@@ -88,7 +87,7 @@ async def main():
     refresh_rate = 0.001
 
     bulbs.append({"light": wizlight("192.168.1.25"), "br": 255, "r":0, "g":0, "b":0, "lock_for": lock_for, "last_lock": time.time(), "state": 0})
-    bulbs.append({"light": wizlight("192.168.1.29"), "br": 255, "r":0, "g":0, "b":0, "lock_for": lock_for, "last_lock": time.time(), "state": 0})
+    # bulbs.append({"light": wizlight("192.168.1.29"), "br": 255, "r":0, "g":0, "b":0, "lock_for": lock_for, "last_lock": time.time(), "state": 0})
     max = 0
     average = 0
     min = 0
