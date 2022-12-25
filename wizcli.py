@@ -9,8 +9,7 @@ from random import random
 import threading
 from pywizlight import wizlight, PilotBuilder, discovery
 
-BULBIPS = ["192.168.1.14", "192.168.1.2"]
-
+BULBIPS = ["192.168.1.25", "192.168.1.29"]
 
 def __gen_color_standard(seed):
     case = int(seed%3)
