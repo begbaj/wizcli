@@ -6,7 +6,7 @@ import pyautogui
 import time
 import asyncio
 
-BULBIPS = ["192.168.1.16"]
+BULBIPS = ["192.168.1.3"]
 SCREEN_SIZE = (1920, 1080)
 
 
@@ -14,6 +14,8 @@ SCREEN_SIZE = (1920, 1080)
 def get_dominant_color(pil_img):
     img = pil_img.copy()
     img = img.convert("RGBA")
+    # WARNING: this only gets the central pixel
+    # not the most dominant color
     img = img.resize((1, 1), resample=0)
     dominant_color = img.getpixel((0, 0))
     return dominant_color
@@ -24,7 +26,7 @@ async def main():
     for bulb in BULBIPS:
         bulbs.append({"light": wizlight(bulb), "br": 255, "r":0, "g":0, "b":0})
 
-    fps = 10
+    fps = 30
     prev = 0
 
     while True:
@@ -32,8 +34,7 @@ async def main():
         if time_elapsed > 1.0/fps:
             prev = time.time()
 
-            img = pyautogui.screenshot(region=(0,0,SCREEN_SIZE[0],SCREEN_SIZE[1]))
-
+            img = pyautogui.screenshot()
             # Useful to see what pyautogui is actually capturing
             #img.save("pa.png")
             #frame = np.array(img)
@@ -53,7 +54,7 @@ async def main():
                 await bulb["light"].turn_on(PilotBuilder(
                     speed=200,
                     rgb=(color[0],color[1],color[2]),
-                    brightness=60
+                    brightness=((color[0]+color[1]+color[2])/768)*255
                 ))
 
 
