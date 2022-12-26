@@ -10,6 +10,7 @@ BULBIPS = ["192.168.1.16"]
 SCREEN_SIZE = (1920, 1080)
 
 
+# Fast way to determine most dominant color, reducing to a single pixel and seeing
 def get_dominant_color(pil_img):
     img = pil_img.copy()
     img = img.convert("RGBA")
@@ -23,21 +24,15 @@ async def main():
     for bulb in BULBIPS:
         bulbs.append({"light": wizlight(bulb), "br": 255, "r":0, "g":0, "b":0})
 
-    print("yeah")
-    
-    for bulb in bulbs:
-        await bulb["light"].turn_off()
-
     fps = 10
     prev = 0
 
     while True:
         time_elapsed = time.time()-prev
-        print("YEAH")
         if time_elapsed > 1.0/fps:
             prev = time.time()
 
-            img = pyautogui.screenshot(region=(0,0,1920,1080))
+            img = pyautogui.screenshot(region=(0,0,SCREEN_SIZE[0],SCREEN_SIZE[1]))
 
             # Useful to see what pyautogui is actually capturing
             #img.save("pa.png")
@@ -51,14 +46,13 @@ async def main():
             #color_thief = ColorThief("temporary_screenshot.png")
             #dominant_color = color_thief.get_color(quality=1)
 
+            print("Updating bulb")
             print(color)
-            red = color[0] + 100
-            if red > 255:
-                red = 255
+
             for bulb in bulbs:
                 await bulb["light"].turn_on(PilotBuilder(
                     speed=200,
-                    rgb=(red,color[1]+50,color[2]+50),
+                    rgb=(color[0],color[1],color[2]),
                     brightness=60
                 ))
 
