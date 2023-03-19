@@ -26,7 +26,7 @@ async def main():
     for bulb in BULBIPS:
         bulbs.append({"light": wizlight(bulb), "br": 255, "r":0, "g":0, "b":0})
 
-    fps = 30
+    fps = 120
     prev = 0
 
     while True:
@@ -34,7 +34,7 @@ async def main():
         if time_elapsed > 1.0/fps:
             prev = time.time()
 
-            img = pyautogui.screenshot()
+            img = pyautogui.screenshot(region=(SCREEN_SIZE[0],0,SCREEN_SIZE[0],SCREEN_SIZE[1]))
             # Useful to see what pyautogui is actually capturing
             #img.save("pa.png")
             #frame = np.array(img)
