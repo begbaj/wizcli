@@ -6,10 +6,7 @@ pkgdesc='Command line tool for WiZ smart bulbs: set colours, presets, audio-reac
 arch=(any)
 url='https://github.com/begbaj/wizcli'
 license=(GPL-3.0-or-later)
-# python-pywizlight (upstream: https://github.com/sbidy/pywizlight) is maintained elsewhere
-# and is not in the official repos nor in the AUR at the time of writing (2026-11-16):
-# it must be provided as a package before building wizcli.
-depends=(python python-numpy python-pywizlight)
+depends=(python python-numpy)
 makedepends=(python-build python-installer python-wheel python-hatchling)
 checkdepends=(python-pytest)
 optdepends=(

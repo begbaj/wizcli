@@ -10,10 +10,11 @@ scan as fallback), or you can skip discovery with `--ips 192.168.1.X 192.168.1.Y
 
 ### Arch Linux (PKGBUILD)
 
-wizcli depends on [pywizlight](https://github.com/sbidy/pywizlight), which is maintained by someone else
-and is **not** currently in the official repos or the AUR. The PKGBUILD declares it as `python-pywizlight`,
-so that package has to exist on your system first (build it from the upstream repository, or from an AUR
-package if one is published). If you don't want to package it, use the pipx install below instead.
+**Requirement: [pywizlight](https://github.com/sbidy/pywizlight).** It is maintained by someone else and is not
+packaged in the official repos or the AUR, so the PKGBUILD does not list it as a dependency. Install it
+yourself before running `makepkg` (and before using wizcli), e.g. from PyPI in an environment that
+wizcli can see, or from your own package built from the upstream repository. The test suite run by
+`check()` imports it, so it must be importable at build time too (`makepkg --nocheck` skips the tests).
 
 ```bash
 git clone https://github.com/begbaj/wizcli && cd wizcli/packaging
