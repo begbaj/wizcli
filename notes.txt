@@ -1,5 +1,0 @@
-desklight:
-    ip: 192.168.1.47
-    mac: a8bb50419016
-    recv-port: 38899
-    send-port: 38899

@@ -1,0 +1,25 @@
+# Maintainer: Began Bajrami <begbaj@proton.me>
+# Dependency of wizcli: not available in the official repos or the AUR (checked 2026-11-16).
+# Built from the PyPI wheel (pure Python, py3-none-any) with a pinned checksum.
+pkgname=python-pywizlight
+_name=pywizlight
+pkgver=0.6.7
+pkgrel=1
+pkgdesc='Python connector for WiZ light bulbs'
+arch=(any)
+url='https://github.com/sbidy/pywizlight'
+license=(MIT)
+depends=(python python-click)
+makedepends=(python-installer)
+source=("https://files.pythonhosted.org/packages/py3/${_name::1}/$_name/${_name}-$pkgver-py3-none-any.whl")
+sha256sums=('0b8fe18d7b6f1be1b151a9bad381a49244809084c011c6fc9f250a6d3c05f45a')
+
+package() {
+  python -m installer --destdir="$pkgdir" "${_name}-$pkgver-py3-none-any.whl"
+  # MIT is not a "common" license: expose the license file shipped in the wheel
+  local _lic
+  _lic=$(find "$pkgdir" -path '*dist-info/licenses/LICENSE*' -type f | head -n1)
+  if [[ -n $_lic ]]; then
+    install -Dm644 "$_lic" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  fi
+}

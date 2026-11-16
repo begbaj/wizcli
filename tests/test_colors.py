@@ -11,7 +11,7 @@ def test_parse_without_hash():
     assert parse_hex_color("FF8000") == (255, 128, 0)
 
 
-@pytest.mark.parametrize("bad", ["#12", "zzzzzz"])
+@pytest.mark.parametrize("bad", ["#12", "zzzzzz", "+1+1+1", "-1-1-1", "##ff0000", " ff0000"])
 def test_parse_invalid(bad):
     with pytest.raises(ValueError):
         parse_hex_color(bad)

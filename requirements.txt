@@ -1,5 +1,0 @@
-pywizlight
-aubio
-pyaudio
-pygame
-numpy

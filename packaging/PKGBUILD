@@ -1,0 +1,36 @@
+# Maintainer: Began Bajrami <begbaj@proton.me>
+pkgname=wizcli
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Command line tool for WiZ smart bulbs: set colours, presets, audio-reactive lights'
+arch=(any)
+url='https://github.com/begbaj/wizcli'
+license=(GPL-3.0-or-later)
+# python-pywizlight is not in the official repos nor in the AUR (checked 2026-11-16):
+# build and install packaging/python-pywizlight first.
+depends=(python python-numpy python-pywizlight)
+makedepends=(python-build python-installer python-wheel python-hatchling)
+checkdepends=(python-pytest)
+optdepends=(
+  'python-aubio: "play" command (offline beat detection)'
+  'python-pygame: "play" command (audio playback)'
+  'python-pyaudio: "switch" command (microphone / loopback input)'
+  'libpulse: "party" command (pactl and parec)'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP') # run `updpkgsums` after tagging v$pkgver
+
+build() {
+  cd "$pkgname-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  PYTHONPATH="$PWD/src" pytest -o addopts=""
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+}
