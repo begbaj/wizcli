@@ -10,11 +10,11 @@ scan as fallback), or you can skip discovery with `--ips 192.168.1.X 192.168.1.Y
 
 ### Arch Linux (PKGBUILD)
 
-`python-pywizlight` is not in the official repos or the AUR, so a PKGBUILD for it is included.
+A single PKGBUILD installs everything. `pywizlight` is not in the official repos or the AUR, so its
+pure-Python wheel is bundled into the package (pinned checksum).
 
 ```bash
 git clone https://github.com/begbaj/wizcli && cd wizcli/packaging
-(cd python-pywizlight && makepkg -si)
 makepkg -si
 ```
 
