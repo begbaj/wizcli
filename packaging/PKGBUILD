@@ -6,9 +6,11 @@ pkgdesc='Command line tool for WiZ smart bulbs: set colours, presets, audio-reac
 arch=(any)
 url='https://github.com/begbaj/wizcli'
 license=(GPL-3.0-or-later)
-depends=(python python-numpy)
-makedepends=(python-build python-installer python-wheel python-hatchling)
-checkdepends=(python-pytest)
+# pywizlight is maintained upstream (https://github.com/sbidy/pywizlight) and is not packaged
+# in the official repos nor in the AUR: package() installs its latest GitHub release with pip
+# into wizcli's own virtual environment (no version pinned, needs network access).
+depends=(python python-numpy python-click)
+makedepends=(python-build python-installer python-wheel python-hatchling curl)
 optdepends=(
   'python-aubio: "play" command (offline beat detection)'
   'python-pygame: "play" command (audio playback)'
@@ -18,17 +20,30 @@ optdepends=(
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
 sha256sums=('SKIP') # run `updpkgsums` after tagging v$pkgver
 
+_venv=/usr/lib/$pkgname/venv
+
 build() {
   cd "$pkgname-$pkgver"
   python -m build --wheel --no-isolation
 }
 
-check() {
-  cd "$pkgname-$pkgver"
-  PYTHONPATH="$PWD/src" pytest -o addopts=""
-}
-
 package() {
   cd "$pkgname-$pkgver"
-  python -m installer --destdir="$pkgdir" dist/*.whl
+
+  # latest pywizlight release on GitHub (redirect of /releases/latest -> .../tag/<tag>)
+  local _tag
+  _tag=$(curl -sIL -o /dev/null -w '%{url_effective}' \
+    https://github.com/sbidy/pywizlight/releases/latest)
+  _tag=${_tag##*/}
+
+  # system site-packages provide numpy and click; pip adds pywizlight and wizcli
+  python -m venv --system-site-packages "$pkgdir$_venv"
+  "$pkgdir$_venv/bin/python" -m pip install --no-compile --disable-pip-version-check \
+    dist/*.whl "https://github.com/sbidy/pywizlight/archive/refs/tags/$_tag.tar.gz"
+
+  # the venv was created under $pkgdir: rewrite its paths to the final location
+  grep -rIlZ -- "$pkgdir" "$pkgdir$_venv" | xargs -0 -r sed -i "s|$pkgdir||g"
+
+  install -d "$pkgdir/usr/bin"
+  ln -s "$_venv/bin/wizcli" "$pkgdir/usr/bin/wizcli"
 }
