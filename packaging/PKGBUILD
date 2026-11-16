@@ -2,15 +2,14 @@
 pkgname=wizcli
 pkgver=0.1.0
 pkgrel=1
-_pywizlight=0.6.7
 pkgdesc='Command line tool for WiZ smart bulbs: set colours, presets, audio-reactive lights'
 arch=(any)
 url='https://github.com/begbaj/wizcli'
-license=(GPL-3.0-or-later MIT)
-# pywizlight is not in the official repos nor in the AUR (checked 2026-11-16), so its
-# pure-Python wheel is bundled and installed alongside wizcli (second source, pinned checksum).
-# If a python-pywizlight package appears later, drop the wheel and depend on it instead.
-depends=(python python-numpy python-click)
+license=(GPL-3.0-or-later)
+# python-pywizlight (upstream: https://github.com/sbidy/pywizlight) is maintained elsewhere
+# and is not in the official repos nor in the AUR at the time of writing (2026-11-16):
+# it must be provided as a package before building wizcli.
+depends=(python python-numpy python-pywizlight)
 makedepends=(python-build python-installer python-wheel python-hatchling)
 checkdepends=(python-pytest)
 optdepends=(
@@ -19,11 +18,8 @@ optdepends=(
   'python-pyaudio: "switch" command (microphone / loopback input)'
   'libpulse: "party" command (pactl and parec)'
 )
-source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz"
-        "https://files.pythonhosted.org/packages/py3/p/pywizlight/pywizlight-$_pywizlight-py3-none-any.whl")
-noextract=("pywizlight-$_pywizlight-py3-none-any.whl")
-sha256sums=('SKIP' # run `updpkgsums` after tagging v$pkgver
-            '0b8fe18d7b6f1be1b151a9bad381a49244809084c011c6fc9f250a6d3c05f45a')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP') # run `updpkgsums` after tagging v$pkgver
 
 build() {
   cd "$pkgname-$pkgver"
@@ -32,17 +28,10 @@ build() {
 
 check() {
   cd "$pkgname-$pkgver"
-  # pywizlight is not installed yet at check time: put the bundled wheel on the path
-  PYTHONPATH="$PWD/src:$srcdir/pywizlight-$_pywizlight-py3-none-any.whl" pytest -o addopts=""
+  PYTHONPATH="$PWD/src" pytest -o addopts=""
 }
 
 package() {
-  python -m installer --destdir="$pkgdir" \
-    "$srcdir/pywizlight-$_pywizlight-py3-none-any.whl"
   cd "$pkgname-$pkgver"
   python -m installer --destdir="$pkgdir" dist/*.whl
-  # MIT is not a "common" license: ship pywizlight's license text
-  local _lic
-  _lic=$(find "$pkgdir" -path '*pywizlight-*.dist-info/licenses/LICENSE*' -type f | head -n1)
-  install -Dm644 "$_lic" "$pkgdir/usr/share/licenses/$pkgname/LICENSE.pywizlight"
 }
