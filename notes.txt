@@ -1,4 +1,0 @@
-desklight:
-    ip: 192.168.1.8
-    recv-port: 38899 - 38899
-    send-port: 65401 - 38900

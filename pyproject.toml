@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wizcli"
+dynamic = ["version"]
+description = "Command line tool for WiZ smart bulbs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Began Bajrami" }]
+dependencies = ["pywizlight", "numpy"]
+
+[project.optional-dependencies]
+audio = ["aubio", "pyaudio", "pygame"]
+dev = ["pytest"]
+
+[project.scripts]
+wizcli = "wizcli.cli:main"
+
+[tool.hatch.version]
+path = "src/wizcli/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wizcli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

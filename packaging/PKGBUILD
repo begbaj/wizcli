@@ -1,0 +1,49 @@
+# Maintainer: Began Bajrami <begbaj@proton.me>
+pkgname=wizcli
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Command line tool for WiZ smart bulbs: set colours, presets, audio-reactive lights'
+arch=(any)
+url='https://github.com/begbaj/wizcli'
+license=(GPL-3.0-or-later)
+# pywizlight is maintained upstream (https://github.com/sbidy/pywizlight) and is not packaged
+# in the official repos nor in the AUR: package() installs its latest GitHub release with pip
+# into wizcli's own virtual environment (no version pinned, needs network access).
+depends=(python python-numpy python-click)
+makedepends=(python-build python-installer python-wheel python-hatchling curl)
+optdepends=(
+  'python-aubio: "play" command (offline beat detection)'
+  'python-pygame: "play" command (audio playback)'
+  'python-pyaudio: "switch" command (microphone / loopback input)'
+  'libpulse: "party" command (pactl and parec)'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('c721285f4d6229f2e566a493188ef8fb902dfa6561dd70aa65bf0c46af1bfccc')
+
+_venv=/usr/lib/$pkgname/venv
+
+build() {
+  cd "$pkgname-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+
+  # latest pywizlight release on GitHub (redirect of /releases/latest -> .../tag/<tag>)
+  local _tag
+  _tag=$(curl -sIL -o /dev/null -w '%{url_effective}' \
+    https://github.com/sbidy/pywizlight/releases/latest)
+  _tag=${_tag##*/}
+
+  # system site-packages provide numpy and click; pip adds pywizlight and wizcli
+  python -m venv --system-site-packages "$pkgdir$_venv"
+  "$pkgdir$_venv/bin/python" -m pip install --no-compile --disable-pip-version-check \
+    dist/*.whl "https://github.com/sbidy/pywizlight/archive/refs/tags/$_tag.tar.gz"
+
+  # the venv was created under $pkgdir: rewrite its paths to the final location
+  grep -rIlZ -- "$pkgdir" "$pkgdir$_venv" | xargs -0 -r sed -i "s|$pkgdir||g"
+
+  install -d "$pkgdir/usr/bin"
+  ln -s "$_venv/bin/wizcli" "$pkgdir/usr/bin/wizcli"
+}
