@@ -11,10 +11,15 @@ scan as fallback), or you can skip discovery with `--ips 192.168.1.X 192.168.1.Y
 ### Arch Linux (PKGBUILD)
 
 **Requirement: [pywizlight](https://github.com/sbidy/pywizlight).** It is maintained by someone else and is not
-packaged in the official repos or the AUR, so the PKGBUILD does not list it as a dependency. Install it
-yourself before running `makepkg` (and before using wizcli), e.g. from PyPI in an environment that
-wizcli can see, or from your own package built from the upstream repository. The test suite run by
-`check()` imports it, so it must be importable at build time too (`makepkg --nocheck` skips the tests).
+packaged in the official repos or the AUR, so the PKGBUILD does not list it as a dependency. Install it from
+the [GitHub releases](https://github.com/sbidy/pywizlight/releases) of its repository, for example:
+
+```bash
+pip install https://github.com/sbidy/pywizlight/archive/refs/tags/v0.6.7.tar.gz   # use the release you want
+```
+
+It must be importable by the Python that runs wizcli, and by `check()` at build time (`makepkg --nocheck`
+skips the tests).
 
 ```bash
 git clone https://github.com/begbaj/wizcli && cd wizcli/packaging
@@ -30,6 +35,8 @@ sudo pacman -S --asdeps python-aubio python-pygame python-pyaudio libpulse
 Before installing a tagged release, run `updpkgsums` in `packaging/` to fill in the source checksum.
 
 ### pipx / pip
+
+These pull pywizlight in automatically.
 
 ```bash
 pipx install "wizcli @ git+https://github.com/begbaj/wizcli"
