@@ -11,15 +11,10 @@ scan as fallback), or you can skip discovery with `--ips 192.168.1.X 192.168.1.Y
 ### Arch Linux (PKGBUILD)
 
 **Requirement: [pywizlight](https://github.com/sbidy/pywizlight).** It is maintained by someone else and is not
-packaged in the official repos or the AUR, so the PKGBUILD does not list it as a dependency. Install it from
-the [GitHub releases](https://github.com/sbidy/pywizlight/releases) of its repository, for example:
-
-```bash
-pip install https://github.com/sbidy/pywizlight/archive/refs/tags/v0.6.7.tar.gz   # use the release you want
-```
-
-It must be importable by the Python that runs wizcli, and by `check()` at build time (`makepkg --nocheck`
-skips the tests).
+packaged in the official repos or the AUR, so the PKGBUILD does not list it as a dependency. Install it
+manually, from the latest [GitHub release](https://github.com/sbidy/pywizlight/releases/latest) of its
+repository, into the environment wizcli runs in (see [pywizlight](#pywizlight-manual-step) below).
+It must also be importable at build time by `check()` (`makepkg --nocheck` skips the tests).
 
 ```bash
 git clone https://github.com/begbaj/wizcli && cd wizcli/packaging
@@ -36,12 +31,23 @@ Before installing a tagged release, run `updpkgsums` in `packaging/` to fill in 
 
 ### pipx / pip
 
-These pull pywizlight in automatically.
-
 ```bash
 pipx install "wizcli @ git+https://github.com/begbaj/wizcli"
 # with the audio commands (needs system libs: aubio, portaudio):
 pipx install "wizcli[audio] @ git+https://github.com/begbaj/wizcli"
+```
+
+### pywizlight (manual step)
+
+`pip` and `pipx` already resolve `pywizlight` from PyPI. To use the latest release published on GitHub
+instead (no version pinned), install it into wizcli's own virtual environment:
+
+```bash
+tag=$(curl -sIL -o /dev/null -w '%{url_effective}' https://github.com/sbidy/pywizlight/releases/latest)
+url="https://github.com/sbidy/pywizlight/archive/refs/tags/${tag##*/}.tar.gz"
+
+.venv/bin/pip install "$url"        # development venv of this repository
+pipx inject wizcli "$url"           # venv created by `pipx install wizcli`
 ```
 
 ### Development
