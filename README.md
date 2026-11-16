@@ -3,8 +3,9 @@
 Command line tool for [WiZ](https://www.wizconnected.com/) smart bulbs: set colour, brightness and
 presets, and drive the lights from audio (offline file, microphone threshold, or real-time "party" mode).
 
-Bulbs are discovered automatically on the local network (UDP broadcast on your /24 subnet, with a unicast
-scan as fallback), or you can skip discovery with `--ips 192.168.1.X 192.168.1.Y`.
+Bulbs are discovered automatically: wizcli scans the private networks your machine is connected to
+(taken from the network interfaces, so it also works while a VPN is the default route) with a unicast probe,
+and falls back to a UDP broadcast. You can skip discovery with `--ips 192.168.1.X 192.168.1.Y`.
 
 ## Installation
 

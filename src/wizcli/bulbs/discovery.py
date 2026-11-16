@@ -1,16 +1,25 @@
 """Bulb discovery and factory.
 
 pywizlight's discover_lights() is broken on Python 3.10+, so we implement our
-own UDP-broadcast discovery with a unicast /24 scan as fallback.
+own discovery: a unicast getPilot sweep of every local LAN (works behind
+stateful firewalls, because the replies belong to our own outgoing flow), with
+a UDP broadcast as fallback.
+
+The networks to scan come from the machine's own interfaces, never from the
+default route: with a VPN active the default route points at the tunnel, not
+at the LAN where the bulbs are.
 """
 
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import ipaddress
 import json
 import socket
+import struct
 from collections.abc import Awaitable, Callable, Iterable
+from typing import NamedTuple
 
 from pywizlight import wizlight
 
@@ -35,20 +44,69 @@ def _make_broadcast_socket(port: int = _PORT) -> socket.socket:
     return sock
 
 
-def _subnet_broadcast() -> str:
-    """Derive the subnet broadcast address from the default route interface."""
+_VIRTUAL_PREFIXES = ("docker", "br-", "veth", "virbr", "lxc", "podman")
+
+IFF_UP = 0x1
+IFF_LOOPBACK = 0x8
+IFF_POINTOPOINT = 0x10
+
+_SIOCGIFFLAGS = 0x8913
+_SIOCGIFADDR = 0x8915
+_SIOCGIFNETMASK = 0x891B
+
+
+class Interface(NamedTuple):
+    name: str
+    ip: str
+    netmask: str
+    flags: int
+
+
+def _read_interfaces() -> list[Interface]:
+    """IPv4 interfaces of this machine (Linux ioctl, no extra dependency)."""
+    found: list[Interface] = []
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        for _, name in socket.if_nameindex():
+            ifr = struct.pack("256s", name.encode()[:15])
+            try:
+                flags = struct.unpack("H", fcntl.ioctl(sock, _SIOCGIFFLAGS, ifr)[16:18])[0]
+                ip = socket.inet_ntoa(fcntl.ioctl(sock, _SIOCGIFADDR, ifr)[20:24])
+                mask = socket.inet_ntoa(fcntl.ioctl(sock, _SIOCGIFNETMASK, ifr)[20:24])
+            except OSError:
+                continue  # interface without an IPv4 address
+            found.append(Interface(name, ip, mask, flags))
+    finally:
+        sock.close()
+    return found
+
+
+def select_networks(ifaces: Iterable[Interface]) -> list[ipaddress.IPv4Network]:
+    """LAN networks worth scanning: up, not loopback, not point-to-point (VPN
+    tunnels), not container/virtual bridges, private address space only, with
+    room for hosts; networks larger than /24 are narrowed to the /24 around our
+    own address."""
+    nets: list[ipaddress.IPv4Network] = []
+    for i in ifaces:
+        if not i.flags & IFF_UP or i.flags & (IFF_LOOPBACK | IFF_POINTOPOINT):
+            continue
+        if i.name.startswith(_VIRTUAL_PREFIXES):
+            continue
         try:
-            probe.connect(("8.8.8.8", 80))
-            local_ip: str = probe.getsockname()[0]
-        finally:
-            probe.close()
-        parts = local_ip.split(".")
-        parts[-1] = "255"
-        return ".".join(parts)
-    except Exception:
-        return "255.255.255.255"
+            net = ipaddress.IPv4Network(f"{i.ip}/{i.netmask}", strict=False)
+        except ValueError:
+            continue
+        if net.prefixlen >= 31 or not net.is_private:
+            continue
+        if net.prefixlen < 24:
+            net = ipaddress.IPv4Network(f"{i.ip}/24", strict=False)
+        if net not in nets:
+            nets.append(net)
+    return nets
+
+
+def local_networks() -> list[ipaddress.IPv4Network]:
+    return select_networks(_read_interfaces())
 
 
 def _collector(sock: socket.socket, found: dict[str, str]) -> Callable[[], None]:
@@ -67,13 +125,11 @@ def _collector(sock: socket.socket, found: dict[str, str]) -> Callable[[], None]
 
 async def _broadcast_discover(
     wait_time: float = 5.0,
-    broadcast_address: str | None = None,
+    broadcast_address: str = "255.255.255.255",
     *,
     port: int = _PORT,
 ) -> dict[str, str]:
     """Send a UDP broadcast and collect registration replies as ``{ip: mac}``."""
-    if broadcast_address is None:
-        broadcast_address = _subnet_broadcast()
 
     loop = asyncio.get_running_loop()
     found: dict[str, str] = {}
@@ -129,9 +185,11 @@ class BulbFactory:
         *,
         broadcast: Callable[..., Awaitable[dict[str, str]]] = _broadcast_discover,
         unicast: Callable[..., Awaitable[dict[str, str]]] = _unicast_scan,
+        networks: Callable[[], list[ipaddress.IPv4Network]] = local_networks,
     ) -> None:
         self._broadcast = broadcast
         self._unicast = unicast
+        self._networks = networks
 
     async def create(
         self, ips: list[str] | None = None, wait_time: float = 5.0
@@ -146,22 +204,29 @@ class BulbFactory:
             print(f"Using {len(bulbs)} manually specified bulb(s): {', '.join(ips)}")
             return bulbs
 
-        subnet_bcast = _subnet_broadcast()
-        print(
-            f"Discovering bulbs via broadcast ({subnet_bcast})… "
-            f"(waiting {wait_time:.0f}s)"
-        )
-        found = await self._broadcast(
-            wait_time=wait_time, broadcast_address=subnet_bcast
-        )
+        nets = self._networks()
+        found: dict[str, str] = {}
+        if nets:
+            print(f"Scanning for bulbs on {', '.join(str(n) for n in nets)}…")
+            scans = [
+                self._unicast(
+                    subnet=str(net.network_address).rsplit(".", 1)[0],
+                    hosts=[int(str(h).rsplit(".", 1)[1]) for h in net.hosts()],
+                )
+                for net in nets
+            ]
+            for result in await asyncio.gather(*scans):
+                found.update(result)
 
-        if not found:
-            subnet_prefix = ".".join(subnet_bcast.split(".")[:3])
-            print(
-                f"Broadcast found nothing. "
-                f"Falling back to unicast scan of {subnet_prefix}.0/24…"
-            )
-            found = await self._unicast(subnet=subnet_prefix)
+            if not found:
+                print(f"No reply to the scan. Trying broadcast (waiting {wait_time:.0f}s)…")
+                for net in nets:
+                    found.update(
+                        await self._broadcast(
+                            wait_time=max(wait_time / len(nets), 1.0) if wait_time else 0,
+                            broadcast_address=str(net.broadcast_address),
+                        )
+                    )
 
         if not found:
             raise NoBulbsFound(

@@ -5,7 +5,17 @@ import threading
 
 import pytest
 
-from wizcli.bulbs.discovery import BulbFactory, _unicast_scan
+import ipaddress
+
+from wizcli.bulbs.discovery import (
+    IFF_LOOPBACK,
+    IFF_POINTOPOINT,
+    IFF_UP,
+    BulbFactory,
+    Interface,
+    _unicast_scan,
+    select_networks,
+)
 from wizcli.errors import InvalidArgument, NoBulbsFound
 
 
@@ -30,18 +40,38 @@ def test_invalid_ip_raises(bad):
         _run(f.create([bad]))
 
 
-def test_broadcast_empty_falls_back_to_unicast():
+LAN = [ipaddress.ip_network("192.168.1.0/24")]
+
+
+def _lan():
+    return LAN
+
+
+def test_unicast_scan_runs_first_on_local_network():
     calls = []
 
-    async def bcast(wait_time=5.0, broadcast_address=None):
+    async def ucast(subnet, timeout=0.5, **kw):
+        calls.append(subnet)
+        return {"192.168.1.47": "aabbccddeeff"}
+
+    f = BulbFactory(broadcast=_boom, unicast=ucast, networks=_lan)
+    bulbs = _run(f.create(wait_time=0))
+    assert calls == ["192.168.1"] and [b.ip for b in bulbs] == ["192.168.1.47"]
+
+
+def test_broadcast_fallback_uses_the_network_broadcast_address():
+    sent = []
+
+    async def empty(subnet, timeout=0.5, **kw):
         return {}
 
-    async def ucast(subnet, timeout=0.5):
-        calls.append(subnet)
-        return {"1.2.3.4": "aabbccddeeff"}
+    async def bcast(wait_time=5.0, broadcast_address=None, **kw):
+        sent.append(broadcast_address)
+        return {"192.168.1.9": "aabbccddeeff"}
 
-    bulbs = _run(BulbFactory(broadcast=bcast, unicast=ucast).create(wait_time=0))
-    assert calls and [b.ip for b in bulbs] == ["1.2.3.4"]
+    f = BulbFactory(broadcast=bcast, unicast=empty, networks=_lan)
+    bulbs = _run(f.create(wait_time=0))
+    assert sent == ["192.168.1.255"] and [b.ip for b in bulbs] == ["192.168.1.9"]
 
 
 def test_nothing_found_raises_no_bulbs_found():
@@ -49,7 +79,31 @@ def test_nothing_found_raises_no_bulbs_found():
         return {}
 
     with pytest.raises(NoBulbsFound, match="--ips"):
-        _run(BulbFactory(broadcast=empty, unicast=empty).create(wait_time=0))
+        _run(BulbFactory(broadcast=empty, unicast=empty, networks=_lan).create(wait_time=0))
+
+
+def test_no_local_network_raises_no_bulbs_found():
+    with pytest.raises(NoBulbsFound, match="--ips"):
+        _run(BulbFactory(broadcast=_boom, unicast=_boom, networks=lambda: []).create())
+
+
+def test_select_networks_ignores_vpn_loopback_down_and_narrows_big_nets():
+    ifaces = [
+        Interface("lo", "127.0.0.1", "255.0.0.0", IFF_UP | IFF_LOOPBACK),
+        Interface("wlan0", "192.168.1.162", "255.255.255.0", IFF_UP),
+        Interface("proton0", "10.2.0.2", "255.255.255.255", IFF_UP | IFF_POINTOPOINT),
+        Interface("tun0", "10.8.0.2", "255.255.255.0", IFF_UP | IFF_POINTOPOINT),
+        Interface("wlan1", "192.168.50.2", "255.255.255.0", 0),
+        Interface("docker0", "172.17.0.1", "255.255.0.0", IFF_UP),
+        Interface("br-62ced6f14974", "172.19.0.1", "255.255.0.0", IFF_UP),
+        Interface("pvpn0", "100.85.0.1", "255.255.255.0", IFF_UP),
+        Interface("eth0", "10.0.4.7", "255.255.0.0", IFF_UP),
+        Interface("dup", "192.168.1.200", "255.255.255.0", IFF_UP),
+    ]
+    assert select_networks(ifaces) == [
+        ipaddress.ip_network("192.168.1.0/24"),
+        ipaddress.ip_network("10.0.4.0/24"),
+    ]
 
 
 def test_unicast_scan_finds_fake_bulb():
