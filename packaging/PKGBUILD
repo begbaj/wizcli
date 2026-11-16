@@ -18,7 +18,7 @@ optdepends=(
   'libpulse: "party" command (pactl and parec)'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('SKIP') # run `updpkgsums` after tagging v$pkgver
+sha256sums=('c721285f4d6229f2e566a493188ef8fb902dfa6561dd70aa65bf0c46af1bfccc')
 
 _venv=/usr/lib/$pkgname/venv
 
