@@ -63,8 +63,94 @@ def test_ips_after_set_subcommand():
 
 def test_every_command_registered():
     names = {c.name for c in commands.all_commands()}
-    assert names == {"discover", "set", "preset"}
+    assert names == {"discover", "set", "preset", "play", "switch", "party"}
     assert all(isinstance(c, Command) for c in commands.all_commands())
+
+
+def test_global_ips_before_party():
+    args = cli.build_parser().parse_args(["--ips", "A", "B", "party"])
+    assert args.command == "party"
+    assert args.ips == ["A", "B"]
+
+
+def test_audio_command_options():
+    parser = cli.build_parser()
+    play = parser.parse_args(["play", "song.wav", "--ips", "10.0.0.1"])
+    assert play.file == "song.wav" and play.ips == ["10.0.0.1"]
+    sw = parser.parse_args(["switch"])
+    assert sw.threshold == 50.0 and sw.device is None and sw.list_devices is False
+    sw = parser.parse_args(["switch", "--threshold", "55", "-d", "loopback", "--list-devices"])
+    assert sw.threshold == 55.0 and sw.device == "loopback" and sw.list_devices is True
+    party = parser.parse_args(["party", "--ips", "10.0.0.2"])
+    assert party.ips == ["10.0.0.2"]
+
+
+def test_party_has_no_device_option(capsys):
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["party", "--device", "x"])
+    capsys.readouterr()
+
+
+def test_party_without_pactl_is_clean_error(no_network, monkeypatch, capsys):
+    import shutil
+
+    def _no_subprocess(*a, **k):
+        raise AssertionError("subprocess used")
+
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    monkeypatch.setattr(subprocess, "run", _no_subprocess)
+    monkeypatch.setattr(subprocess, "Popen", _no_subprocess)
+    assert cli.main(["party"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error: ")
+    assert "libpulse" in err
+    assert "Traceback" not in err
+
+
+def _missing_extra(monkeypatch):
+    from wizcli import optional
+    from wizcli.errors import MissingExtra
+
+    requested = []
+
+    def _require(module, extra="audio"):
+        requested.append(module)
+        raise MissingExtra(f"Module '{module}' is required: pip install 'wizcli[{extra}]'")
+
+    monkeypatch.setattr(optional, "require", _require)
+    return requested
+
+
+def test_play_without_audio_extra_is_clean_error(no_network, monkeypatch, capsys):
+    requested = _missing_extra(monkeypatch)
+    assert cli.main(["play", "song.wav"]) == 1
+    assert requested == ["pygame"]
+    err = capsys.readouterr().err
+    assert "error: Module 'pygame' is required: pip install 'wizcli[audio]'" in err
+    assert "Traceback" not in err
+
+
+@pytest.mark.parametrize("argv", [["switch"], ["switch", "--list-devices"]])
+def test_switch_without_audio_extra_is_clean_error(no_network, monkeypatch, capsys, argv):
+    requested = _missing_extra(monkeypatch)
+    assert cli.main(argv) == 1
+    assert requested == ["pyaudio"]
+    err = capsys.readouterr().err
+    assert "error: Module 'pyaudio' is required" in err
+
+
+def test_switch_loopback_tip():
+    from wizcli.commands.switch import loopback_tip
+
+    devices = [
+        {"index": 0, "name": "Built-in Mic"},
+        {"index": 1, "name": "Monitor of Built-in Audio"},
+    ]
+    tip = "\n".join(loopback_tip(devices))
+    assert 'wizcli switch --device "Monitor of Built-in Audio"' in tip
+    assert "wizcli switch --list-devices" in tip
+    assert "python cli.py" not in tip
+    assert loopback_tip([{"index": 0, "name": "USB Mic"}]) == []
 
 
 def test_set_rgb_and_hex_mutually_exclusive(capsys):

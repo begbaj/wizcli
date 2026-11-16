@@ -24,6 +24,6 @@ def all_commands() -> list[Command]:
 
 
 # Imported for their registration side effect (order = order in --help).
-from wizcli.commands import discover, set_cmd, preset  # noqa: E402,F401
+from wizcli.commands import discover, set_cmd, preset, play, switch, party  # noqa: E402,F401
 
 __all__ = ["Command", "all_commands", "register"]
